@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* Wide net scan */
+@source "../**/*.html";
+@source "./**/*.{js,ts,jsx,tsx,html}";
