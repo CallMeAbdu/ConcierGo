@@ -1,0 +1,39 @@
+# ======================
+# Python / Flask Backend
+# ======================
+
+# Virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.coverage
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Env files (keep secrets out of Git)
+.env
+.env.local
+
+# Flask instance folder (if used for configs/uploads)
+instance/
+
+# Logs
+*.log
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
