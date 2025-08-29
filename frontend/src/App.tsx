@@ -24,6 +24,8 @@ export default function App() {
   const [setLocationMode, setSetLocationMode] = useState(false);
   const [showCenterInfo, setShowCenterInfo] = useState(false);
 
+  const [geoStatus, setGeoStatus] = useState<'granted' | 'prompt' | 'denied' | null>(null);
+
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_JS_API_KEY as string,
   });
@@ -65,17 +67,52 @@ export default function App() {
     if (places.length === 1) mapRef.current.setZoom(15);
   }, [places, center]);
 
+  useEffect(() => {
+    let unmounted = false;
+    if ('permissions' in navigator) {
+      // @ts-ignore – PermissionName union doesn't always include 'geolocation' in TS dom lib
+      navigator.permissions.query({ name: 'geolocation' }).then((res: any) => {
+        if (!unmounted) setGeoStatus(res.state);
+        res.onchange = () => !unmounted && setGeoStatus(res.state);
+      }).catch(() => {});
+    }
+    return () => { unmounted = true; };
+  }, []);
+
   function useMyLocation() {
     if (!navigator.geolocation) return alert("Geolocation not supported");
+  
+    // If previously denied, guide the user to manual set + allow a retry.
+    if (geoStatus === 'denied') {
+      setSetLocationMode(true);
+      alert(
+        "Location is blocked by your browser.\n" +
+        "Click on the map to set your location, or enable location permission in your browser settings, then press Retry."
+      );
+      return;
+    }
+  
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         mapRef.current?.setZoom(14);
       },
-      (err) => alert("Location error: " + err.message),
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setGeoStatus('denied');
+          setSetLocationMode(true);
+          alert(
+            "You denied location permission.\n" +
+            "Click on the map to set your location, or enable permission and press Retry."
+          );
+        } else {
+          alert("Location error: " + err.message);
+        }
+      },
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }
+  
 
   function focusPlace(p: PlaceItem) {
     setSelected(p);
@@ -121,8 +158,10 @@ export default function App() {
 
       {/* Two-column layout */}
       <div className="mx-auto mt-4 grid w-full max-w-[2000px] grid-cols-1 gap-6 px-4 md:grid-cols-[minmax(0,1fr)_360px]">
+
         {/* Map column wrapper is relative so the filter menu can cover it exactly */}
         <div className="relative rounded-xl border bg-white overflow-hidden">
+
           {/* Floating Hamburger/X button that belongs to the map/filter area */}
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -156,7 +195,6 @@ export default function App() {
                   setCenter({ lat, lng });
                   mapRef.current?.setZoom(14);
                 }
-                setSetLocationMode(false);
               }}
               onDragStart={() => setSelected(null)}
               options={{
