@@ -13,17 +13,44 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
 
-  // Filters (live in drawer)
+  // Filters
   const [interests, setInterests] = useState<string[]>(["coffee"]);
   const [radiusKm, setRadiusKm] = useState(3);
   const [limit, setLimit] = useState(10);
   const [sortBy, setSortBy] = useState<"distance" | "rating">("distance");
 
   // UI
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [setLocationMode, setSetLocationMode] = useState(false); // click map to set center
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [setLocationMode, setSetLocationMode] = useState(false);
   const [showCenterInfo, setShowCenterInfo] = useState(false);
 
+  // Measure & anchor the dropdown to the hamburger
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number; width: number }>({
+    left: 16,
+    top: 60,
+    width: 320,
+  });
+
+  // Keep the dropdown positioned on resize/scroll
+  useEffect(() => {
+    function measure() {
+      if (!buttonRef.current) return;
+      const r = buttonRef.current.getBoundingClientRect();
+      setMenuPos({
+        left: r.left + window.scrollX,
+        top: r.bottom + window.scrollY + 8, // small gap under button
+        width: 320,
+      });
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
+    };
+  }, []);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_JS_API_KEY as string,
@@ -38,7 +65,6 @@ export default function App() {
         interests,
         radius_km: radiusKm,
       });
-      // client-side sort/limit (backend can also do this)
       const sorted = [...data].sort((a, b) => {
         if (sortBy === "rating") return (b.rating ?? 0) - (a.rating ?? 0);
         return (a.distance_m ?? Infinity) - (b.distance_m ?? Infinity);
@@ -64,7 +90,7 @@ export default function App() {
     if (!mapRef.current || places.length === 0) return;
     const bounds = new google.maps.LatLngBounds();
     places.forEach((p) => p.location && bounds.extend(p.location));
-    bounds.extend(center); // include center for context
+    bounds.extend(center);
     mapRef.current.fitBounds(bounds);
     if (places.length === 1) mapRef.current.setZoom(15);
   }, [places, center]);
@@ -95,23 +121,55 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 text-gray-900">
       {/* Top App Bar */}
       <header className="sticky top-0 z-20 border-b bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-[2000px] items-center gap-3 px-4 py-3">
           <button
-            onClick={() => setDrawerOpen(true)}
-            aria-label="Open filters"
-            className="rounded-lg border px-3 py-2 hover:bg-gray-50"
+            ref={buttonRef}
+            onClick={() => {
+              // measure just-in-time to avoid first-click misalignment
+              if (buttonRef.current) {
+                const r = buttonRef.current.getBoundingClientRect();
+                setMenuPos({
+                  left: r.left + window.scrollX,
+                  top: r.bottom + window.scrollY + 8,
+                  width: 320,
+                });
+              }
+              setMenuOpen((v) => !v);
+            }}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label="Filters"
             title="Filters"
+            className={[
+              "relative rounded-lg border px-3 py-2 hover:bg-gray-50",
+              "transition-transform duration-200",
+              menuOpen ? "scale-[0.96]" : "scale-100",
+            ].join(" ")}
           >
-            <div className="flex h-4 w-4 flex-col justify-between">
-              <span className="block h-[2px] w-4 bg-gray-800"></span>
-              <span className="block h-[2px] w-4 bg-gray-800"></span>
-              <span className="block h-[2px] w-4 bg-gray-800"></span>
+            <div className="relative h-4 w-5">
+              <span
+                className={[
+                  "absolute left-0 top-0 h-[2px] w-5 bg-gray-800 transition-all duration-300",
+                  menuOpen ? "translate-y-[6px] rotate-45" : "",
+                ].join(" ")}
+              />
+              <span
+                className={[
+                  "absolute left-0 top-1/2 h-[2px] w-5 -translate-y-1/2 bg-gray-800 transition-all duration-300",
+                  menuOpen ? "opacity-0 scale-x-0" : "opacity-100 scale-x-100",
+                ].join(" ")}
+              />
+              <span
+                className={[
+                  "absolute left-0 bottom-0 h-[2px] w-5 bg-gray-800 transition-all duration-300",
+                  menuOpen ? "-translate-y-[6px] -rotate-45" : "",
+                ].join(" ")}
+              />
             </div>
           </button>
 
           <span className="rounded-lg bg-black px-2 py-1 text-sm font-semibold text-white">ConcierGo</span>
-          <h1 className="text-lg font-semibold">Maps</h1>
-
+          
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={useMyLocation}
@@ -138,13 +196,122 @@ export default function App() {
         </div>
       </header>
 
+      {/* Backdrop (click outside to close) */}
+      {menuOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/0"
+          onClick={() => setMenuOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* Dropdown Filter Panel */}
+      <div
+        role="menu"
+        aria-hidden={!menuOpen}
+        className={[
+          "fixed z-40 overflow-hidden rounded-2xl border bg-white shadow-xl",
+          "transition-all duration-300 ease-[cubic-bezier(.22,1,.36,1)]",
+          menuOpen ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 -translate-y-1 pointer-events-none",
+        ].join(" ")}
+        style={{
+          left: menuPos.left,
+          top: menuPos.top,
+          width: menuPos.width,
+          transformOrigin: "top left",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Filters</h3>
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="rounded-lg border px-2 py-1 hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Interests</label>
+              <select
+                multiple
+                value={interests}
+                onChange={(e) => {
+                  const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
+                  setInterests(vals);
+                }}
+                className="w-full rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
+                title="Hold Ctrl/Cmd to select multiple"
+              >
+                <option value="coffee">coffee</option>
+                <option value="parks">parks</option>
+                <option value="museums">museums</option>
+                <option value="restaurants">restaurants</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="text-sm">Radius (km)</label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(Number(e.target.value))}
+                className="w-24 rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="text-sm">Results</label>
+              <select
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+                className="rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
+              >
+                {[5, 10, 15, 20].map((n) => (
+                  <option key={n} value={n}>Top {n}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="text-sm">Sort</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as "distance" | "rating")}
+                className="rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
+              >
+                <option value="distance">Distance</option>
+                <option value="rating">Rating</option>
+              </select>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  refresh();
+                }}
+                className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+              >
+                Apply & Search
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Two-column layout */}
-      <div className="mx-auto mt-4 grid max-w-6xl grid-cols-1 gap-4 px-4 md:grid-cols-[1fr_420px]">
+      <div className="mx-auto mt-4 grid w-full max-w-[2000px] grid-cols-1 gap-6 px-4 md:grid-cols-[minmax(0,1fr)_360px]">
         {/* Map */}
         <div className="rounded-xl border bg-white">
           {isLoaded ? (
             <GoogleMap
-              mapContainerStyle={{ width: "100%", height: "75vh" }}
+              mapContainerStyle={{ width: "100%", height: "80vh" }}
               center={center}
               onLoad={(map) => { mapRef.current = map; }}
               onClick={(e) => {
@@ -183,7 +350,6 @@ export default function App() {
                 </InfoWindow>
               )}
 
-
               {/* Result markers */}
               {places.map((p) => (
                 <Marker key={p.id} position={p.location} onClick={() => setSelected(p)} />
@@ -213,7 +379,7 @@ export default function App() {
         </div>
 
         {/* Scrollable list (right) */}
-        <aside className="h-[75vh] overflow-y-auto rounded-xl border bg-white p-3">
+        <aside className="h-[80vh] overflow-y-auto rounded-xl border bg-white p-3">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide opacity-80">Results</h2>
             <span className="text-sm opacity-70">{places.length} places</span>
@@ -233,7 +399,6 @@ export default function App() {
                     ].join(" ")}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="mt-1 h-10 w-10 shrink-0 rounded-xl bg-gray-100" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <h3 className="truncate text-base font-semibold">{p.name}</h3>
@@ -255,90 +420,6 @@ export default function App() {
           </ol>
         </aside>
       </div>
-
-      {/* Filters Drawer */}
-      {drawerOpen && (
-        <>
-          {/* Backdrop */}
-          <div className="fixed inset-0 z-30 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          {/* Panel */}
-          <div className="fixed inset-y-0 left-0 z-40 w-[320px] bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Filters</h3>
-              <button onClick={() => setDrawerOpen(false)} className="rounded-lg border px-2 py-1 hover:bg-gray-50">
-                Close
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Interests</label>
-                <select
-                  multiple
-                  value={interests}
-                  onChange={(e) => {
-                    const vals = Array.from(e.target.selectedOptions).map((o) => o.value);
-                    setInterests(vals);
-                  }}
-                  className="w-full rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
-                  title="Hold Ctrl/Cmd to select multiple"
-                >
-                  <option value="coffee">coffee</option>
-                  <option value="parks">parks</option>
-                  <option value="museums">museums</option>
-                  <option value="restaurants">restaurants</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <label className="text-sm">Radius (km)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={radiusKm}
-                  onChange={(e) => setRadiusKm(Number(e.target.value))}
-                  className="w-24 rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
-                />
-              </div>
-
-              <div className="flex items-center gap-3">
-                <label className="text-sm">Results</label>
-                <select
-                  value={limit}
-                  onChange={(e) => setLimit(Number(e.target.value))}
-                  className="rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
-                >
-                  {[5, 10, 15, 20].map((n) => (
-                    <option key={n} value={n}>Top {n}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <label className="text-sm">Sort</label>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as "distance" | "rating")}
-                  className="rounded-lg border px-3 py-2 outline-none focus:ring focus:ring-blue-200"
-                >
-                  <option value="distance">Distance</option>
-                  <option value="rating">Rating</option>
-                </select>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={() => { setDrawerOpen(false); refresh(); }}
-                  className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
-                >
-                  Apply & Search
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }
